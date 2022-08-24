@@ -20,87 +20,28 @@ describe('Strategy', function() {
 
     describe('handling request JWT present in request', function() {
 
-
-        function genHandlers(opts) {
-            var user, info;
-            var payload = { user: {}, info: {} };
-            return {
-                before: function(done) {
-                    var strategy = new Strategy({
-                            jwtFromRequest: function (r) { return test_data.valid_jwt.token; },
-                            secretOrKey: 'secret',
-                            challenges: opts.challenges,
-                        },
-                        function(jwt_payload, next) {
-                            return next(null, payload.user, payload.info);
-                        }
-                    );
-
-                    mockVerifier.reset();
-
-                    chai.passport.use(strategy)
-                        .success(function(u, i) {
-                            user = u;
-                            info = i;
-                            done();
-                        })
-                        .authenticate();
+        before(function(done) {
+            var strategy = new Strategy({
+                    jwtFromRequest: function (r) { return test_data.valid_jwt.token; },
+                    secretOrKey: 'secret',
                 },
-                itVerifies: function() {
-                    sinon.assert.calledOnce(mockVerifier);
-                    expect(mockVerifier.args[0][0]).to.equal(test_data.valid_jwt.token);
-                },
-                itForwards: function() {
-                    expect(user).to.equal(payload.user);
-                    expect(info).to.equal(payload.info);
-                },
-            }
-        }
+                function(jwt_payload, next) {
+                    return next(null, {}, {});
+                }
+            );
 
-        describe('without challenges', function() {
+            mockVerifier.reset();
 
-            var handlers = genHandlers({});
-
-            before(handlers.before);
-
-            it("verifies the right jwt", handlers.itVerifies);
-
-            it("forwards user and info", handlers.itForwards);
-
+            chai.passport.use(strategy)
+                .success(function(u, i) {
+                    done();
+                })
+                .authenticate();
         });
 
-        describe('with challenges', function() {
-
-            describe('default invalidRequest challenge', function() {
-
-                var handlers = genHandlers({ challenges: true });
-
-                before(handlers.before);
-
-                it("verifies the right jwt", handlers.itVerifies);
-
-                it("forwards user and info", handlers.itForwards);
-
-            });
-
-            describe('custom invalidRequest challenge', function() {
-
-                var handlers = genHandlers({
-                    challenges: {
-                        invalidRequest: function(r) {
-                            return 'Bearer error="invalid_request"';
-                        },
-                    },
-                });
-
-                before(handlers.before);
-
-                it("verifies the right jwt", handlers.itVerifies);
-
-                it("forwards user and info", handlers.itForwards);
-
-            });
-
+        it("verifies the right jwt", function() {
+            sinon.assert.calledOnce(mockVerifier);
+            expect(mockVerifier.args[0][0]).to.equal(test_data.valid_jwt.token);
         });
 
     });
