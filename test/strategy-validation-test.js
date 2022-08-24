@@ -7,12 +7,11 @@ var Strategy = require('../lib/strategy')
 describe('Strategy', function() {
 
     describe('calling JWT validation function', function() {
-        var strategy;
 
         before(function(done) {
-            verifyStub = sinon.stub();
+            var verifyStub = sinon.stub();
             verifyStub.callsArgWith(1, null, {}, {});
-            options = {};
+            var options = {};
             options.issuer = "TestIssuer";
             options.audience = "TestAudience";
             options.secretOrKey = 'secret';
@@ -23,7 +22,7 @@ describe('Strategy', function() {
               maxAge: "1h",
             };
             options.jwtFromRequest = extract_jwt.fromAuthHeaderAsBearerToken();
-            strategy = new Strategy(options, verifyStub);
+            var strategy = new Strategy(options, verifyStub);
 
             Strategy.JwtVerifier = sinon.stub();
             Strategy.JwtVerifier.callsArgWith(3, null, test_data.valid_jwt.payload);
@@ -79,10 +78,13 @@ describe('Strategy', function() {
 
 
     describe('handling valid jwt', function() {
-        var strategy, payload;
+        var payload;
 
         before(function(done) {
-            strategy = new Strategy({jwtFromRequest: extract_jwt.fromAuthHeaderAsBearerToken(), secretOrKey: 'secret'}, function(jwt_payload, next) {
+            var strategy = new Strategy({
+                jwtFromRequest: extract_jwt.fromAuthHeaderAsBearerToken(),
+                secretOrKey: 'secret'
+            }, function(jwt_payload, next) {
                 payload = jwt_payload;
                 next(null, {}, {});
             });
@@ -111,37 +113,101 @@ describe('Strategy', function() {
 
 
     describe('handling failing jwt', function() {
-        var strategy, info;
-        var verify_spy = sinon.spy();
 
-        before(function(done) {
+        function genHandlers(opts) {
 
-            strategy = new Strategy({jwtFromRequest: extract_jwt.fromAuthHeaderAsBearerToken(), secretOrKey: 'secret'}, verify_spy);
+            var challenge, status;
+            var verify_spy = sinon.spy();
 
-            // Mock errored verification
-            Strategy.JwtVerifier = sinon.stub();
-            Strategy.JwtVerifier.callsArgWith(3, new Error("jwt expired"), false);
+            return {
+                before: function(done) {
 
-            chai.passport.use(strategy)
-                .fail(function(i) {
-                    info = i;
-                    done();
-                })
-                .req(function(req) {
-                    req.headers['authorization'] = "bearer " + test_data.valid_jwt.token;
-                })
-                .authenticate();
+                    verify_spy.reset();
+                    var strategy = new Strategy({
+                        jwtFromRequest: extract_jwt.fromAuthHeaderAsBearerToken(),
+                        secretOrKey: 'secret',
+                        challenges: opts.challenges,
+                    }, verify_spy);
+
+                    // Mock errored verification
+                    Strategy.JwtVerifier = sinon.stub();
+                    Strategy.JwtVerifier.callsArgWith(3, new Error("jwt expired"), false);
+
+                    chai.passport.use(strategy)
+                        .fail(function(c, s) {
+                            challenge = c;
+                            status = s;
+                            done();
+                        })
+                        .req(function(req) {
+                            req.headers['authorization'] = "bearer " + test_data.valid_jwt.token;
+                        })
+                        .authenticate();
+                },
+                itDoesNotVerify: function() {
+                    sinon.assert.notCalled(verify_spy);
+                },
+                itFails: {
+                    withChallenge: function() {
+                        expect(challenge).to.equal(opts.expectedChallenge);
+                        expect(status).to.equal(401);
+                    },
+                    withUndefined: function() {
+                        expect(challenge).to.be.undefined;
+                        expect(status).to.be.undefined;
+                    },
+                },
+            }
+        }
+
+        describe('without challenges', function() {
+
+            var handlers = genHandlers({});
+
+            before(handlers.before);
+
+            it('should not call verify', handlers.itDoesNotVerify);
+
+            it('should fail without challenge and status', handlers.itFails.withUndefined);
+
         });
 
+        describe('with challenges', function() {
 
-        it('should not call verify', function() {
-            sinon.assert.notCalled(verify_spy);
-        });
+            describe('default invalidToken challenge', function() {
 
+                var handlers = genHandlers({
+                    expectedChallenge: 'Bearer error="invalid_token" error_description="jwt expired"',
+                    challenges: true,
+                });
 
-        it('should fail with error message.', function() {
-            expect(info).to.be.an.object;
-            expect(info.message).to.equal('jwt expired');
+                before(handlers.before);
+
+                it('should not call verify', handlers.itDoesNotVerify);
+
+                it('should fail with challenge and status', handlers.itFails.withChallenge);
+
+            });
+
+            describe('custom invalidToken challenge', function() {
+
+                var handlers = genHandlers({
+                    expectedChallenge: 'custom challenge',
+                    challenges: {
+                        invalidToken: function(r) {
+                            return 'custom challenge';
+                        },
+                    },
+                });
+
+                before(handlers.before);
+
+                it('should not call verify', handlers.itDoesNotVerify);
+
+                it('should fail with challenge and status', handlers.itFails.withChallenge);
+
+            });
+
         });
 
     });
