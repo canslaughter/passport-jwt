@@ -126,7 +126,8 @@ describe('Strategy', function() {
                     var strategy = new Strategy({
                         jwtFromRequest: extract_jwt.fromAuthHeaderAsBearerToken(),
                         secretOrKey: 'secret',
-                        challenges: opts.challenges,
+                        failWithChallenge: opts.failWithChallenge,
+                        invalidTokenChallenge: opts.invalidTokenChallenge,
                     }, verify_spy);
 
                     // Mock errored verification
@@ -160,7 +161,7 @@ describe('Strategy', function() {
             }
         }
 
-        describe('without challenges', function() {
+        describe('without challenge', function() {
 
             var handlers = genHandlers({});
 
@@ -172,13 +173,13 @@ describe('Strategy', function() {
 
         });
 
-        describe('with challenges', function() {
+        describe('with challenge', function() {
 
-            describe('default invalidToken challenge', function() {
+            describe('default', function() {
 
                 var handlers = genHandlers({
                     expectedChallenge: 'Bearer error="invalid_token" error_description="jwt expired"',
-                    challenges: true,
+                    failWithChallenge: true,
                 });
 
                 before(handlers.before);
@@ -189,14 +190,13 @@ describe('Strategy', function() {
 
             });
 
-            describe('custom invalidToken challenge', function() {
+            describe('custom', function() {
 
                 var handlers = genHandlers({
                     expectedChallenge: 'custom challenge',
-                    challenges: {
-                        invalidToken: function(r) {
-                            return 'custom challenge';
-                        },
+                    failWithChallenge: true,
+                    invalidTokenChallenge: function(r) {
+                        return 'custom challenge';
                     },
                 });
 

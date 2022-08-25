@@ -56,9 +56,9 @@ describe('Strategy', function() {
             return {
                 before: function(done) {
                     var strategy = new Strategy({
-                            jwtFromRequest: function (r) {},
+                            jwtFromRequest: opts.jwtFromRequest,
                             secretOrKey: 'secret',
-                            challenges: opts.challenges,
+                            failWithChallenge: opts.failWithChallenge,
                         },
                         function(jwt_payload, next) {
                             // Return values aren't important in this case
@@ -95,53 +95,123 @@ describe('Strategy', function() {
             }
         }
 
-        describe('without challenges', function() {
+        describe('without challenge', function() {
 
-            var handlers = genHandlers({});
+            var handlers = genHandlers({
+                jwtFromRequest: function (r) {},
+            });
 
             before(handlers.before);
 
-            it('should fail authentication', handlers.itFails.withUndefined);
+            it('should fail authentication with undefined', handlers.itFails.withUndefined);
 
             it('Should not try to verify anything', handlers.itDoesNotVerify);
 
         });
 
-        describe('with challenges', function() {
+        describe('with challenge', function() {
 
-            describe('default invalidRequest challenge', function() {
+            describe('default', function() {
 
-                var error_description = 'The request is missing a required parameter, includes an '
-                    + 'unsupported parameter or parameter value, repeats the same '
-                    + 'parameter, uses more than one method for including an access '
-                    + 'token, or is otherwise malformed.';
                 var handlers = genHandlers({
-                    expectedChallenge: 'Bearer error="invalid_request" error_description="' + error_description + '"',
-                    challenges: true,
+                    jwtFromRequest: function (r) {},
+                    failWithChallenge: true,
+                    expectedChallenge: 'Bearer error="invalid_request" error_description="The request is missing a ' +
+                        'required parameter, includes an unsupported parameter or parameter value, repeats ' +
+                        'the same parameter, uses more than one method for including an access token, or is ' +
+                        'otherwise malformed."',
                 });
 
                 before(handlers.before);
 
-                it('should fail authentication', handlers.itFails.withChallenge);
+                it('should fail authentication with challenge and status', handlers.itFails.withChallenge);
 
                 it('Should not try to verify anything', handlers.itDoesNotVerify);
 
             });
 
-            describe('custom invalidRequest challenge', function() {
+            describe('custom', function() {
 
                 var handlers = genHandlers({
-                    expectedChallenge: 'custom challenge',
-                    challenges: {
-                        invalidRequest: function(r) {
-                            return 'custom challenge';
-                        },
+                    jwtFromRequest: function (r) {
+                        throw new Strategy.RequestValidationError('custom challenge');
                     },
+                    failWithChallenge: true,
+                    expectedChallenge: 'custom challenge',
                 });
 
                 before(handlers.before);
 
-                it('should fail authentication', handlers.itFails.withChallenge);
+                it('should fail authentication with challenge and status', handlers.itFails.withChallenge);
+
+                it('Should not try to verify anything', handlers.itDoesNotVerify);
+
+            });
+
+        });
+
+
+        describe('failWithChallenge disabled', function() {
+
+
+            function genHandlers(opts) {
+                var error;
+                return {
+                    before: function() {
+                        var strategy = new Strategy({
+                                jwtFromRequest: function(r) {
+                                    throw opts.error;
+                                },
+                                secretOrKey: 'secret',
+                            },
+                            function(jwt_payload, next) {
+                                // Return values aren't important in this case
+                                return next(null, {}, {});
+                            }
+                        );
+
+                        mockVerifier.reset();
+
+                        try {
+                            chai.passport.use(strategy)
+                                .req(function(req) {
+                                    req.body = {}
+                                })
+                                .authenticate();
+                        } catch (e) {
+                            error = e;
+                        }
+                    },
+                    itThrows: function() {
+                        expect(error).to.equal(opts.error);
+                    },
+                    itDoesNotVerify: function() {
+                        sinon.assert.notCalled(mockVerifier);
+                    },
+                }
+            }
+
+            describe('arbitrary error', function() {
+
+                var handlers = genHandlers({error: new Error('arbitrary error')});
+
+                before(handlers.before);
+
+                it('should throw error', handlers.itThrows);
+
+                it('Should not try to verify anything', handlers.itDoesNotVerify);
+
+            });
+
+            describe('RequestValidationError', function() {
+
+                var handlers = genHandlers({
+                    error: new Strategy.RequestValidationError('arbitrary error'),
+                });
+
+                before(handlers.before);
+
+                it('should throw error', handlers.itThrows);
 
                 it('Should not try to verify anything', handlers.itDoesNotVerify);
 
